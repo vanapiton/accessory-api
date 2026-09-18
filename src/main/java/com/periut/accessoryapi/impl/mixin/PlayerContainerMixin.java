@@ -6,6 +6,7 @@ import com.periut.accessoryapi.api.AccessoryInventory;
 import com.periut.accessoryapi.impl.slot.AccessorySlot;
 import com.periut.accessoryapi.impl.slot.AccessorySlotStorage;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
 import net.minecraft.screen.PlayerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
@@ -15,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import static com.periut.accessoryapi.impl.slot.AccessoryInventoryPlacement.getCraftingOffset;
 import static com.periut.accessoryapi.impl.slot.AccessorySlotStorage.hideOverflowSlots;
@@ -26,6 +28,8 @@ public abstract class PlayerContainerMixin extends ScreenHandler {
     private static final int craft_centering_shift = getCraftingOffset();
     @Unique
     int slotCounter = 0;
+    @Unique
+    private AccessoryInventory accessories;
 
     @ModifyArg(method = "<init>(Lnet/minecraft/entity/player/PlayerInventory;Z)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/screen/PlayerScreenHandler;addSlot(Lnet/minecraft/screen/slot/Slot;)V"), index = 0)
     private Slot changeTopSlots(Slot par1) {
@@ -64,7 +68,7 @@ public abstract class PlayerContainerMixin extends ScreenHandler {
 
         // accessory slots are backed by the player's own AccessoryInventory,
         // not by extra indices grafted onto the vanilla armor array
-        AccessoryInventory accessories = ((AccessoryHolder) inv.player).getAccessoryInventory();
+        accessories = ((AccessoryHolder) inv.player).getAccessoryInventory();
         int slotnum = 0;
 
         for (AccessorySlotStorage.PreservedSlot slot : slotOrder) {
@@ -73,5 +77,27 @@ public abstract class PlayerContainerMixin extends ScreenHandler {
         }
 
         hideOverflowSlots((PlayerScreenHandler) (Object) this);
+    }
+
+    @Inject(method="quickMove", at = @At(value = "HEAD"), cancellable = true)
+    private void quickMoveAccessories(int slotIndex, CallbackInfoReturnable<ItemStack> cir) {
+        if (AccessoryAPI.noSlotsAdded)
+            return;
+
+        if(slotIndex < 9 || 44 < slotIndex)
+            return;
+
+        Slot slot = this.slots.get(slotIndex);
+        if (slot == null || !slot.hasStack())
+            return;
+
+        ItemStack slotStack = slot.getStack();
+        ItemStack originalStack = slotStack.copy();
+
+        if(accessories.equipAnywhere(slotStack)) {
+            slot.setStack(null);
+            slot.onTakeItem(slotStack);
+            cir.setReturnValue(originalStack);
+        }
     }
 }
